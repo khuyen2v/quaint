@@ -467,7 +467,7 @@ impl Queryable for PostgreSql {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{connector::Queryable, error::*, single::Quaint};
+    use crate::{ast, connector::Queryable, error::*, single::Quaint};
     use once_cell::sync::Lazy;
     use std::env;
     use url::Url;
@@ -546,6 +546,36 @@ mod tests {
         assert_eq!(row["age"].as_i64(), Some(27));
 
         assert_eq!(row["salary"].as_f64(), Some(20000.0));
+    }
+
+    #[tokio::test]
+    async fn type_roundtrips() {
+        let table = r#"
+            CREATE TABLE types (
+                id SERIAL PRIMARY KEY,
+
+                bytes_uuid uuid
+            );
+        "#;
+
+        let connection = Quaint::new(&CONN_STR).await.unwrap();
+
+        connection.query_raw("DROP TABLE IF EXISTS types", &[]).await.unwrap();
+        connection.query_raw(table, &[]).await.unwrap();
+
+        // let insert = ast::Insert::single_into("types").value("bytes_uuid",
+        // "111142ec-880b-4062-913d-8eac479ab957");
+        let insert = "INSERT INTO types (bytes_uuid) VALUES ($1::text)";
+        let select = ast::Select::from_table("types").value(ast::asterisk());
+
+        // connection.query(insert.into()).await.unwrap();
+        connection
+            .query_raw(insert, &["111142ec-880b-4062-913d-8eac479ab957".into()])
+            .await
+            .unwrap();
+        let result = connection.query(select.into()).await.unwrap().into_single();
+
+        assert_eq!("ey", format!("{:?}", result));
     }
 
     #[tokio::test]

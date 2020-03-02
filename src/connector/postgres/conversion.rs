@@ -282,37 +282,38 @@ impl ToColumnNames for PostgresStatement {
 
 impl<'a> ToSql for ParameterizedValue<'a> {
     fn to_sql(&self, ty: &PostgresType, out: &mut BytesMut) -> Result<IsNull, Box<dyn Error + 'static + Send + Sync>> {
-        match self {
-            ParameterizedValue::Null => Ok(IsNull::Yes),
-            ParameterizedValue::Integer(integer) => match *ty {
-                PostgresType::INT2 => (*integer as i16).to_sql(ty, out),
-                PostgresType::INT4 => (*integer as i32).to_sql(ty, out),
-                PostgresType::TEXT => format!("{}", integer).to_sql(ty, out),
-                _ => (*integer as i64).to_sql(ty, out),
-            },
-            ParameterizedValue::Real(float) => match *ty {
-                PostgresType::NUMERIC => {
-                    let s = float.to_string();
-                    Decimal::from_str(&s).unwrap().to_sql(ty, out)
-                }
-                _ => float.to_sql(ty, out),
-            },
-            ParameterizedValue::Text(string) => string.to_sql(ty, out),
-            ParameterizedValue::Bytes(bytes) => bytes.as_ref().to_sql(ty, out),
-            ParameterizedValue::Enum(string) => {
+        match (self, ty) {
+            (ParameterizedValue::Null, _) => Ok(IsNull::Yes),
+            (ParameterizedValue::Integer(integer), &PostgresType::INT2) => (*integer as i16).to_sql(ty, out),
+            (ParameterizedValue::Integer(integer), &PostgresType::INT4) => (*integer as i32).to_sql(ty, out),
+            (ParameterizedValue::Integer(integer), &PostgresType::TEXT) => format!("{}", integer).to_sql(ty, out),
+            (ParameterizedValue::Integer(integer), _) => (*integer as i64).to_sql(ty, out),
+            (ParameterizedValue::Real(float), &PostgresType::NUMERIC) => {
+                let s = float.to_string();
+                Decimal::from_str(&s).unwrap().to_sql(ty, out)
+            }
+            (ParameterizedValue::Real(float), _) => float.to_sql(ty, out),
+            #[cfg(feature = "uuid-0_8")]
+            (ParameterizedValue::Text(string), &PostgresType::UUID) => {
+                let parsed_uuid: &str = string.as_ref();
+                parsed_uuid.to_sql(ty, out)
+            }
+            (ParameterizedValue::Text(string), _) => string.to_sql(ty, out),
+            (ParameterizedValue::Bytes(bytes), _) => bytes.as_ref().to_sql(ty, out),
+            (ParameterizedValue::Enum(string), _) => {
                 out.extend_from_slice(string.as_bytes());
                 Ok(IsNull::No)
             }
-            ParameterizedValue::Boolean(boo) => boo.to_sql(ty, out),
-            ParameterizedValue::Char(c) => (*c as i8).to_sql(ty, out),
+            (ParameterizedValue::Boolean(boo), _) => boo.to_sql(ty, out),
+            (ParameterizedValue::Char(c), _) => (*c as i8).to_sql(ty, out),
             #[cfg(feature = "array")]
-            ParameterizedValue::Array(vec) => vec.to_sql(ty, out),
+            (ParameterizedValue::Array(vec), _) => vec.to_sql(ty, out),
             #[cfg(feature = "json-1")]
-            ParameterizedValue::Json(value) => value.to_sql(ty, out),
+            (ParameterizedValue::Json(value), _) => value.to_sql(ty, out),
             #[cfg(feature = "uuid-0_8")]
-            ParameterizedValue::Uuid(value) => value.to_sql(ty, out),
+            (ParameterizedValue::Uuid(value), _) => value.to_sql(ty, out),
             #[cfg(feature = "chrono-0_4")]
-            ParameterizedValue::DateTime(value) => value.naive_utc().to_sql(ty, out),
+            (ParameterizedValue::DateTime(value), _) => value.naive_utc().to_sql(ty, out),
         }
     }
 
