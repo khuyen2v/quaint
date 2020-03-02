@@ -554,7 +554,9 @@ mod tests {
             CREATE TABLE types (
                 id SERIAL PRIMARY KEY,
 
-                bytes_uuid uuid
+                bytes_uuid uuid,
+                network_inet inet,
+                network_cidr cidr
             );
         "#;
 
@@ -563,19 +565,29 @@ mod tests {
         connection.query_raw("DROP TABLE IF EXISTS types", &[]).await.unwrap();
         connection.query_raw(table, &[]).await.unwrap();
 
-        // let insert = ast::Insert::single_into("types").value("bytes_uuid",
-        // "111142ec-880b-4062-913d-8eac479ab957");
-        let insert = "INSERT INTO types (bytes_uuid) VALUES ($1::text)";
+        let insert = ast::Insert::single_into("types")
+            .value("bytes_uuid", "111142ec-880b-4062-913d-8eac479ab957")
+            .value("network_inet", "127.0.0.1")
+            .value("network_cidr", "192.168.100.14/24");
         let select = ast::Select::from_table("types").value(ast::asterisk());
 
-        // connection.query(insert.into()).await.unwrap();
-        connection
-            .query_raw(insert, &["111142ec-880b-4062-913d-8eac479ab957".into()])
+        connection.query(insert.into()).await.unwrap();
+        // connection
+        //     .query_raw(insert, &["111142ec-880b-4062-913d-8eac479ab957".into()])
+        //     .await
+        //     .unwrap();
+        let result = connection
+            .query(select.into())
             .await
-            .unwrap();
-        let result = connection.query(select.into()).await.unwrap().into_single();
+            .unwrap()
+            .into_single()
+            .unwrap()
+            .values;
 
-        assert_eq!("ey", format!("{:?}", result));
+        assert_eq!(
+            "[Integer(1), Uuid(111142ec-880b-4062-913d-8eac479ab957), Text(\"127.0.0.1\")]",
+            format!("{:?}", result)
+        );
     }
 
     #[tokio::test]

@@ -220,6 +220,13 @@ impl GetRow for PostgresRow {
                     }
                     None => ParameterizedValue::Null,
                 },
+                PostgresType::INET | PostgresType::CIDR => match row.try_get(i)? {
+                    Some(val) => {
+                        let val: std::net::IpAddr = val;
+                        ParameterizedValue::Text(val.to_string().into())
+                    }
+                    None => ParameterizedValue::Null,
+                },
                 ref x => match x.kind() {
                     Kind::Enum(_) => match row.try_get(i)? {
                         Some(val) => {
@@ -295,8 +302,13 @@ impl<'a> ToSql for ParameterizedValue<'a> {
             (ParameterizedValue::Real(float), _) => float.to_sql(ty, out),
             #[cfg(feature = "uuid-0_8")]
             (ParameterizedValue::Text(string), &PostgresType::UUID) => {
-                let parsed_uuid: &str = string.as_ref();
+                let parsed_uuid: Uuid = string.parse()?;
                 parsed_uuid.to_sql(ty, out)
+            }
+            (ParameterizedValue::Text(string), &PostgresType::INET)
+            | (ParameterizedValue::Text(string), &PostgresType::CIDR) => {
+                let parsed_ip_addr: std::net::IpAddr = string.parse()?;
+                parsed_ip_addr.to_sql(ty, out)
             }
             (ParameterizedValue::Text(string), _) => string.to_sql(ty, out),
             (ParameterizedValue::Bytes(bytes), _) => bytes.as_ref().to_sql(ty, out),
